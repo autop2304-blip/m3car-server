@@ -1,0 +1,282 @@
+{
+  "entities": {
+    "Customer": {
+      "title": "Customer",
+      "description": "Passenger profile registered with Indonesian phone number (+62)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nama": { "type": "string" },
+        "no_hp": { "type": "string" },
+        "alamat": { "type": "string" },
+        "tanggal_daftar": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["nama", "no_hp"]
+    },
+    "Driver": {
+      "title": "Driver",
+      "description": "M3Car driver partner profile with online status, vehicle, and balance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nama": { "type": "string" },
+        "no_hp": { "type": "string" },
+        "plat_mobil": { "type": "string" },
+        "foto_mobil": { "type": "string" },
+        "status_online": { "type": "boolean" },
+        "saldo": { "type": "number" },
+        "tanggal_daftar": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "password": { "type": "string" },
+        "status": { "type": "string" },
+        "carModel": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "isOnline": { "type": "boolean" },
+        "balance": { "type": "number" },
+        "rating": { "type": "number" },
+        "totalTrips": { "type": "number" },
+        "ktpPhotoUrl": { "type": "string" },
+        "simPhotoUrl": { "type": "string" },
+        "carPhotoUrl": { "type": "string" },
+        "registeredAt": { "type": "string" }
+      },
+      "required": ["nama", "no_hp", "plat_mobil", "saldo"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Travel order record from Jakarta to Ujung Kulon / vice-versa",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "id_order": { "type": "string" },
+        "id_customer": { "type": "string" },
+        "id_driver": { "type": "string" },
+        "titik_jemput": { "type": "string" },
+        "tujuan": { "type": "string" },
+        "jarak_km": { "type": "number" },
+        "harga": { "type": "number" },
+        "status": { "type": "string" },
+        "tanggal_order": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "pickupLocation": { "type": "string" },
+        "destination": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "passengers": { "type": "number" },
+        "region": { "type": "string" },
+        "pricePerPerson": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "commissionRate": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "driverEarnings": { "type": "number" },
+        "tollRoute": { "type": "string" },
+        "eta": { "type": "string" },
+        "driverId": { "type": "string" },
+        "driverName": { "type": "string" },
+        "driverPhone": { "type": "string" },
+        "driverPlate": { "type": "string" },
+        "driverCar": { "type": "string" },
+        "driverLocationProgress": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["titik_jemput", "tujuan", "harga", "status"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "System admin credentials with kode_admin = 011zilsticker",
+      "type": "object",
+      "properties": {
+        "kode_admin": { "type": "string" },
+        "admin_phone": { "type": "string" },
+        "role": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["kode_admin"]
+    },
+    "SaldoHistory": {
+      "title": "SaldoHistory",
+      "description": "Driver wallet top-up and commission deduction history",
+      "type": "object",
+      "properties": {
+        "driverId": { "type": "string" },
+        "driverPhone": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "balanceAfter": { "type": "number" },
+        "description": { "type": "string" },
+        "orderId": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["driverId", "amount", "balanceAfter", "type"]
+    },
+    "AdminSetting": {
+      "title": "AdminSetting",
+      "description": "System-wide admin settings and rates",
+      "type": "object",
+      "properties": {
+        "adminPhone": { "type": "string" },
+        "adminPasswordHash": { "type": "string" },
+        "waDirekturPhone": { "type": "string" },
+        "companyBank": { "type": "object" },
+        "rates": { "type": "object" },
+        "commissionRates": { "type": "object" },
+        "tripayQrisFeeFlat": { "type": "number" },
+        "tripayQrisFeePercent": { "type": "number" }
+      },
+      "required": ["adminPhone", "adminPasswordHash"]
+    },
+    "KeuanganAdmin": {
+      "title": "KeuanganAdmin",
+      "description": "Financial ledger of admin income, commissions, setoran driver, and expenses",
+      "type": "object",
+      "properties": {
+        "id_transaksi": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "jenis": { "type": "string" },
+        "keterangan": { "type": "string" },
+        "jumlah_rp": { "type": "number" },
+        "id_order": { "type": "string" },
+        "nama_driver": { "type": "string" },
+        "nama_customer": { "type": "string" },
+        "isDeleted": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id_transaksi", "tanggal", "jenis", "keterangan", "jumlah_rp"]
+    },
+    "LaporanKeuangan": {
+      "title": "LaporanKeuangan",
+      "description": "Archived completed/paid order revenue preserved across 7/30-day order history cleanup for 1-year reporting",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "customerName": { "type": "string" },
+        "driverName": { "type": "string" },
+        "pickupLocation": { "type": "string" },
+        "destination": { "type": "string" },
+        "date": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "totalPrice": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "driverEarnings": { "type": "number" },
+        "year": { "type": "number" },
+        "createdAtIso": { "type": "string" },
+        "createdAtMs": { "type": "number" }
+      },
+      "required": ["orderId", "orderNumber", "totalPrice", "year"]
+    },
+    "SettingsJarakDekat": {
+      "title": "SettingsJarakDekat",
+      "description": "Dedicated pricing and commission configuration for Jarak Dekat system",
+      "type": "object",
+      "properties": {
+        "nominalHarga": { "type": "number" },
+        "komisiPersen": { "type": "number" },
+        "aktif": { "type": "boolean" },
+        "labelLayanan": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["nominalHarga", "komisiPersen", "aktif"]
+    },
+    "SettingsJarakJauh": {
+      "title": "SettingsJarakJauh",
+      "description": "Dedicated inter-city routes, 1-7 passenger buttons, and pricing config for Jarak Jauh system",
+      "type": "object",
+      "properties": {
+        "defaultHargaPerOrang": { "type": "number" },
+        "enableButtons1To7": { "type": "boolean" },
+        "maxPassengers": { "type": "number" },
+        "komisiPersen": { "type": "number" },
+        "aktif": { "type": "boolean" },
+        "ruteList": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["defaultHargaPerOrang", "enableButtons1To7", "aktif"]
+    },
+    "OrderChatMessage": {
+      "title": "OrderChatMessage",
+      "description": "Real-time chat messages between passenger and assigned driver during an active order; auto-deleted upon SELESAI",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "maxLength": 128 },
+        "driverId": { "type": "string", "maxLength": 128 },
+        "senderRole": { "type": "string", "enum": ["customer", "driver"] },
+        "senderName": { "type": "string", "maxLength": 120 },
+        "text": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "createdAtMs": { "type": "number" }
+      },
+      "required": ["orderId", "driverId", "senderRole", "senderName", "text", "createdAtMs"]
+    }
+  },
+  "firestore": {
+    "/users_customer/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Registered customer profiles"
+    },
+    "/users_driver/{driverId}": {
+      "schema": { "$ref": "#/entities/Driver" },
+      "description": "Registered driver partner profiles with online status and wallet"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Legacy unified travel trip orders"
+    },
+    "/orders_jarak_dekat/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Dedicated real-time orders collection for System 1 (Jarak Dekat)"
+    },
+    "/settings_jarak_dekat/{settingId}": {
+      "schema": { "$ref": "#/entities/SettingsJarakDekat" },
+      "description": "Dedicated price & commission configuration for System 1 (Jarak Dekat)"
+    },
+    "/orders_jarak_jauh/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Dedicated real-time orders collection for System 2 (Jarak Jauh)"
+    },
+    "/settings_jarak_jauh/{settingId}": {
+      "schema": { "$ref": "#/entities/SettingsJarakJauh" },
+      "description": "Dedicated inter-city routes & 1-7 button configuration for System 2 (Jarak Jauh)"
+    },
+    "/admin/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Central 24-hour admin access and credentials (kode_admin 011zilsticker)"
+    },
+    "/saldo_history/{transactionId}": {
+      "schema": { "$ref": "#/entities/SaldoHistory" },
+      "description": "Driver balance history for commissions and top-ups"
+    },
+    "/keuangan_admin/{keuanganId}": {
+      "schema": { "$ref": "#/entities/KeuanganAdmin" },
+      "description": "Ledger of financial income, commissions, driver deposits, and omset"
+    },
+    "/laporan_keuangan/{laporanId}": {
+      "schema": { "$ref": "#/entities/LaporanKeuangan" },
+      "description": "Annual financial archive for completed trips preserved for 1 year"
+    },
+    "/setting_admin/{settingId}": {
+      "schema": { "$ref": "#/entities/AdminSetting" },
+      "description": "Company bank account and rate configurations"
+    },
+    "/topup_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/SaldoHistory" },
+      "description": "Driver top up requests with transfer proof"
+    },
+    "/order_chats/{chatId}": {
+      "schema": { "$ref": "#/entities/OrderChatMessage" },
+      "description": "Ephemeral real-time chat messages for active trips, deleted automatically when order completes (SELESAI)"
+    }
+  }
+}

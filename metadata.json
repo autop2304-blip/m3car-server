@@ -1,0 +1,10 @@
+{
+  "name": "Remix Remix Remix Remix Remix Remix Remix Remix Remix Remix Remix Remix Remix M3CAR - Jemput Cepat, Sampai Selamat",
+  "description": "Aplikasi M3Car Jakarta - Ujung Kulon via Tol Tangerang-Merak \u0026 Serang-Panimbang untuk Customer, Driver, dan Admin 24 Jam.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

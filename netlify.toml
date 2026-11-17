@@ -1,0 +1,56 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/admin/*"
+  to = "/.netlify/functions/admin-api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/driver/*"
+  to = "/.netlify/functions/driver-api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/routes/*"
+  to = "/.netlify/functions/route-pricing-api/routes/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/orders/*"
+  to = "/.netlify/functions/route-pricing-api/orders/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/service-worker.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

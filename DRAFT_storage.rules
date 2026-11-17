@@ -1,0 +1,75 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // =========================================================================
+    // M3CAR — RANCANGAN FIREBASE STORAGE SECURITY RULES (ZERO-TRUST RBAC)
+    // Status: DRAFT / USULAN AUDIT KEAMANAN (BELUM DI-DEPLOY)
+    // =========================================================================
+    // Melindungi dokumen sensitif KTP & SIM A driver agar TIDAK dapat
+    // diakses atau didaftar oleh publik secara anonim.
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    function isImageUnderLimit() {
+      return request.resource != null
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024;
+    }
+
+    // Dokumen KTP Driver (/drivers/ktp/{fileName})
+    match /drivers/ktp/{fileName} {
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          fileName.matches('^' + request.auth.uid + '_.*') ||
+          (resource != null && resource.metadata.driverUid == request.auth.uid)
+        )
+      );
+      allow create, update: if isSignedIn() && isImageUnderLimit() && (
+        isAdmin() ||
+        fileName.matches('^' + request.auth.uid + '_.*') ||
+        (request.resource.metadata != null && request.resource.metadata.driverUid == request.auth.uid)
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Dokumen SIM A Driver (/drivers/sim/{fileName})
+    match /drivers/sim/{fileName} {
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          fileName.matches('^' + request.auth.uid + '_.*') ||
+          (resource != null && resource.metadata.driverUid == request.auth.uid)
+        )
+      );
+      allow create, update: if isSignedIn() && isImageUnderLimit() && (
+        isAdmin() ||
+        fileName.matches('^' + request.auth.uid + '_.*') ||
+        (request.resource.metadata != null && request.resource.metadata.driverUid == request.auth.uid)
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Bukti transfer top-up saldo driver (jika dipindahkan ke Storage)
+    match /topup_receipts/{driverUid}/{fileName} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == driverUid);
+      allow create: if isSignedIn() && request.auth.uid == driverUid && isImageUnderLimit();
+      allow update, delete: if isAdmin();
+    }
+
+    // Default-Deny Catch-All
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

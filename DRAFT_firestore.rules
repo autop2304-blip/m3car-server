@@ -1,0 +1,460 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // M3CAR — RANCANGAN FIREBASE FIRESTORE SECURITY RULES (ZERO-TRUST RBAC)
+    // Status: DRAFT / USULAN AUDIT KEAMANAN (BELUM DI-DEPLOY)
+    // =========================================================================
+    // Prinsip Utama:
+    // 1. Default-Deny pada root catch-all (TIDAK ADA allow read, write: if true).
+    // 2. Role berbasis Firebase Auth (request.auth.uid + custom claims / koleksi admins).
+    // 3. Hanya Admin yang boleh mengubah tarif, saldo, pengaturan admin, & keuangan.
+    // 4. Pelanggan hanya mengakses profil & pesanan miliknya sendiri.
+    // 5. Driver hanya mengakses profilnya, antrean MENCARI_DRIVER (jika aktif),
+    //    serta pesanan yang ditugaskan kepadanya — tanpa hak ubah tarif/komisi/saldo.
+    // 6. Biaya tol (jika ada field terpisah) tidak pernah boleh digabungkan oleh
+    //    klien ke komponen komisi atau memanipulasi totalPrice.
+    // =========================================================================
+
+    // --- HELPER FUNGSI UMUM & IDENTITAS ---
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 128 && !id.matches('.*/.*');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isVerifiedDriverClaim() {
+      return isSignedIn() && (
+        request.auth.token.role == 'driver' ||
+        request.auth.token.driverActive == true
+      );
+    }
+
+    function isActiveDriverAccount() {
+      return isSignedIn() && (
+        request.auth.token.driverActive == true ||
+        (
+          exists(/databases/$(database)/documents/drivers/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.status in ['AKTIF', 'active', 'approved'] &&
+          get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.isDeleted != true
+        )
+      );
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isOrderCustomer(data) {
+      return isSignedIn() && (
+        (data.customerUid is string && data.customerUid == request.auth.uid) ||
+        (data.customerId is string && data.customerId == request.auth.uid)
+      );
+    }
+
+    function isOrderDriver(data) {
+      return isSignedIn() && (
+        (data.driverUid is string && data.driverUid == request.auth.uid) ||
+        (data.driverId is string && data.driverId == request.auth.uid)
+      );
+    }
+
+    function isFiniteNonNegNumber(val) {
+      return (val is int || val is float) && val >= 0;
+    }
+
+    function isOptionalString(data, field, maxLen) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    // --- HELPER VALIDASI ENTITAS ---
+
+    function isValidCustomerPayload(data) {
+      return data is map
+        && (!( 'role' in data ) || data.role == 'customer')
+        && (!('isDeleted' in data) || data.isDeleted is bool)
+        && isOptionalString(data, 'name', 120)
+        && isOptionalString(data, 'nama', 120)
+        && isOptionalString(data, 'phone', 32)
+        && isOptionalString(data, 'no_hp', 32);
+    }
+
+    function isValidDriverCreate(data, driverId) {
+      return data is map
+        && (data.uid == request.auth.uid || driverId == request.auth.uid)
+        && data.status in ['MENUNGGU', 'waiting_approval']
+        && (!('saldo' in data) || data.saldo == 0)
+        && (!('balance' in data) || data.balance == 0)
+        && (!('isOnline' in data) || data.isOnline == false)
+        && (!('status_online' in data) || data.status_online == false)
+        && (!('isDeleted' in data) || data.isDeleted == false)
+        && (!('totalTrips' in data) || data.totalTrips == 0)
+        && (data.name is string || data.nama is string)
+        && (data.phone is string || data.no_hp is string);
+    }
+
+    function isDriverSelfAllowedUpdate(oldData, newData) {
+      let changed = newData.diff(oldData).affectedKeys();
+      // Driver DILARANG menyentuh saldo, balance, status persetujuan/blokir,
+      // totalTrips, isDeleted, atau field pemulihan/admin.
+      let forbidden = [
+        'saldo', 'balance', 'status', 'isDeleted', 'totalTrips',
+        'rating', 'rejectionReason', 'blockedReason',
+        'approvedAt', 'rejectedAt', 'blockedAt',
+        'recoveryCodeHash', 'recoveryCodeExpiresAt'
+      ];
+      return !changed.hasAny(forbidden)
+        && changed.hasOnly([
+          'isOnline', 'status_online', 'lat', 'lng',
+          'lokasi', 'currentLocation', 'locationUpdatedAt',
+          'activeOrderId', 'carModel', 'car', 'plateNumber',
+          'plate', 'plat_mobil', 'ktpUrl', 'ktpPhotoUrl',
+          'simUrl', 'simPhotoUrl', 'updatedAt'
+        ])
+        && (!('lat' in newData) || newData.lat == null || (newData.lat is number && newData.lat >= -90 && newData.lat <= 90))
+        && (!('lng' in newData) || newData.lng == null || (newData.lng is number && newData.lng >= -180 && newData.lng <= 180));
+    }
+
+    function isValidOrderCreate(data) {
+      return data is map
+        && data.customerUid == request.auth.uid
+        && data.status == 'MENCARI_DRIVER'
+        && (!('driverId' in data) || data.driverId == '' || data.driverId == null)
+        && (!('driverUid' in data) || data.driverUid == '' || data.driverUid == null)
+        && (!('paymentStatus' in data) || data.paymentStatus == 'BELUM_BAYAR')
+        && (!('isDeleted' in data) || data.isDeleted == false)
+        && isFiniteNonNegNumber(data.totalPrice)
+        && (!('harga' in data) || isFiniteNonNegNumber(data.harga))
+        && (!('commissionAmount' in data) || isFiniteNonNegNumber(data.commissionAmount))
+        && (!('driverEarnings' in data) || isFiniteNonNegNumber(data.driverEarnings))
+        && (!('biayaTolTerpisah' in data) || isFiniteNonNegNumber(data.biayaTolTerpisah))
+        && (data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 120)
+        && (data.customerPhone is string && data.customerPhone.size() >= 6 && data.customerPhone.size() <= 32);
+    }
+
+    function isCustomerCancelOrderUpdate(oldData, newData) {
+      let changed = newData.diff(oldData).affectedKeys();
+      return isOrderCustomer(oldData)
+        && oldData.status in ['MENCARI_DRIVER', 'DRIVER_DITEMUKAN', 'DRIVER_OTW']
+        && newData.status == 'DIBATALKAN'
+        && changed.hasOnly(['status', 'cancelReason', 'cancelledBy', 'cancelledAt', 'updatedAt'])
+        && isOptionalString(newData, 'cancelReason', 300);
+    }
+
+    function isDriverClaimOrderUpdate(oldData, newData) {
+      let changed = newData.diff(oldData).affectedKeys();
+      return isActiveDriverAccount()
+        && oldData.status == 'MENCARI_DRIVER'
+        && ( !('driverId' in oldData) || oldData.driverId == '' || oldData.driverId == null )
+        && newData.status == 'DRIVER_DITEMUKAN'
+        && (newData.driverUid == request.auth.uid || newData.driverId == request.auth.uid)
+        && changed.hasOnly([
+          'status', 'driverId', 'driverUid', 'driverName',
+          'driverPhone', 'driverPlate', 'driverCar',
+          'acceptedAt', 'updatedAt'
+        ]);
+    }
+
+    function isDriverProgressOrderUpdate(oldData, newData) {
+      let changed = newData.diff(oldData).affectedKeys();
+      let validTransition =
+        (oldData.status == 'DRIVER_DITEMUKAN' && newData.status in ['DRIVER_DITEMUKAN', 'DRIVER_OTW', 'DIBATALKAN']) ||
+        (oldData.status == 'DRIVER_OTW' && newData.status in ['DRIVER_OTW', 'SUDAH_JEMPUT', 'DIBATALKAN']) ||
+        (oldData.status == 'SUDAH_JEMPUT' && newData.status in ['SUDAH_JEMPUT', 'SUDAH_SAMPAI', 'SELESAI']) ||
+        (oldData.status == 'SUDAH_SAMPAI' && newData.status in ['SUDAH_SAMPAI', 'SELESAI']);
+
+      // Driver tidak pernah boleh mengubah totalPrice, harga, commissionAmount,
+      // commissionRate, driverEarnings, customerUid, atau data tarif.
+      return isOrderDriver(oldData)
+        && validTransition
+        && changed.hasOnly([
+          'status', 'driverLat', 'driverLng', 'driverLocationText',
+          'driverLocationProgress', 'eta', 'paymentStatus', 'paymentMethod',
+          'cancelReason', 'cancelledBy', 'cancelledAt',
+          'completedAt', 'updatedAt'
+        ])
+        && (!( 'paymentStatus' in changed ) || newData.paymentStatus in ['BELUM_BAYAR', 'LUNAS']);
+    }
+
+    function isValidTopUpCreate(data) {
+      return data is map
+        && (data.driverUid == request.auth.uid || data.driverId == request.auth.uid)
+        && data.status == 'MENUNGGU'
+        && isFiniteNonNegNumber(data.amount) && data.amount > 0
+        && (!('isDeleted' in data) || data.isDeleted == false);
+    }
+
+    // =========================================================================
+    // 1. KOLEKSI PESANAN (orders_jarak_dekat, orders_jarak_jauh, orders)
+    // =========================================================================
+    match /orders_jarak_dekat/{orderId} {
+      allow get: if isValidId(orderId) && (
+        isAdmin() ||
+        isOrderCustomer(resource.data) ||
+        isOrderDriver(resource.data) ||
+        (isVerifiedDriverClaim() && resource.data.status == 'MENCARI_DRIVER')
+      );
+      allow list: if isAdmin() ||
+        isOrderCustomer(resource.data) ||
+        isOrderDriver(resource.data) ||
+        (isVerifiedDriverClaim() && resource.data.status == 'MENCARI_DRIVER');
+      allow create: if isValidId(orderId) && (isAdmin() || isValidOrderCreate(request.resource.data));
+      allow update: if isValidId(orderId) && (
+        isAdmin() ||
+        (
+          !(resource.data.status in ['SELESAI', 'DIBATALKAN']) && (
+            isCustomerCancelOrderUpdate(resource.data, request.resource.data) ||
+            isDriverClaimOrderUpdate(resource.data, request.resource.data) ||
+            isDriverProgressOrderUpdate(resource.data, request.resource.data)
+          )
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /orders_jarak_jauh/{orderId} {
+      allow get: if isValidId(orderId) && (
+        isAdmin() ||
+        isOrderCustomer(resource.data) ||
+        isOrderDriver(resource.data) ||
+        (isVerifiedDriverClaim() && resource.data.status == 'MENCARI_DRIVER')
+      );
+      allow list: if isAdmin() ||
+        isOrderCustomer(resource.data) ||
+        isOrderDriver(resource.data) ||
+        (isVerifiedDriverClaim() && resource.data.status == 'MENCARI_DRIVER');
+      allow create: if isValidId(orderId) && (isAdmin() || isValidOrderCreate(request.resource.data));
+      allow update: if isValidId(orderId) && (
+        isAdmin() ||
+        (
+          !(resource.data.status in ['SELESAI', 'DIBATALKAN']) && (
+            isCustomerCancelOrderUpdate(resource.data, request.resource.data) ||
+            isDriverClaimOrderUpdate(resource.data, request.resource.data) ||
+            isDriverProgressOrderUpdate(resource.data, request.resource.data)
+          )
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && (
+        isAdmin() ||
+        isOrderCustomer(resource.data) ||
+        isOrderDriver(resource.data) ||
+        (isVerifiedDriverClaim() && resource.data.status == 'MENCARI_DRIVER')
+      );
+      allow list: if isAdmin() ||
+        isOrderCustomer(resource.data) ||
+        isOrderDriver(resource.data) ||
+        (isVerifiedDriverClaim() && resource.data.status == 'MENCARI_DRIVER');
+      allow create: if isValidId(orderId) && (isAdmin() || isValidOrderCreate(request.resource.data));
+      allow update: if isValidId(orderId) && (
+        isAdmin() ||
+        (
+          !(resource.data.status in ['SELESAI', 'DIBATALKAN']) && (
+            isCustomerCancelOrderUpdate(resource.data, request.resource.data) ||
+            isDriverClaimOrderUpdate(resource.data, request.resource.data) ||
+            isDriverProgressOrderUpdate(resource.data, request.resource.data)
+          )
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /order_idempotency/{requestKey} {
+      allow get: if isValidId(requestKey) && (
+        isAdmin() ||
+        (isSignedIn() && resource.data.customerUid == request.auth.uid)
+      );
+      allow list: if isAdmin();
+      allow create: if isValidId(requestKey) && isSignedIn() && request.resource.data.customerUid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 2. KONFIGURASI TARIF & PENGATURAN ADMIN (HANYA ADMIN YANG BOLEH UBAH)
+    // =========================================================================
+    // Tarif boleh dibaca publik/pengguna aplikasi untuk kalkulasi harga,
+    // tetapi penulisan (create, update, delete) KHUSUS ADMIN.
+    match /tarif_config/{docId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /tarif_history/{historyId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /settings_jarak_dekat/{settingId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /settings_jarak_jauh/{settingId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // setting_admin/config menyimpan kode/pengaturan sensitif admin -> KHUSUS ADMIN!
+    // Dokumen tampilan non-sensitif (theme_config, ad_config, app_config, payment_config)
+    // hanya boleh di-get untuk UI, dan HANYA Admin yang boleh tulis atau list.
+    match /setting_admin/{settingId} {
+      allow get: if isAdmin() || settingId in ['theme_config', 'ad_config', 'app_config', 'payment_config'];
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 3. DATA KEUANGAN, SALDO DRIVER & TOP-UP (SANGAT SENSITIF)
+    // =========================================================================
+    match /keuangan_admin/{keuanganId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /laporan_keuangan/{laporanId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /saldo_history/{txId} {
+      allow get, list: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.driverUid == request.auth.uid ||
+          resource.data.driverId == request.auth.uid
+        )
+      );
+      // Penulisan saldo_history hanya oleh Admin atau backend Admin SDK
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /topup_requests/{requestId} {
+      allow get, list: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.driverUid == request.auth.uid ||
+          resource.data.driverId == request.auth.uid
+        )
+      );
+      allow create: if isValidId(requestId) && (isAdmin() || isValidTopUpCreate(request.resource.data));
+      // Persetujuan (BERHASIL), Penolakan (DITOLAK), dan Penghapusan KHUSUS ADMIN.
+      allow update: if isAdmin() && !(resource.data.status in ['BERHASIL', 'DITOLAK']);
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 4. PROFIL PENGGUNA (DRIVER, PELANGGAN, ADMIN — ISOLASI PII & SALDO)
+    // =========================================================================
+    match /drivers/{driverId} {
+      allow get: if isValidId(driverId) && (
+        isAdmin() ||
+        isOwner(driverId) ||
+        (isSignedIn() && resource.data.uid == request.auth.uid)
+      );
+      allow list: if isAdmin() ||
+        (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(driverId) && (
+        isAdmin() ||
+        (isSignedIn() && isValidDriverCreate(request.resource.data, driverId))
+      );
+      allow update: if isValidId(driverId) && (
+        isAdmin() ||
+        (
+          (isOwner(driverId) || (isSignedIn() && resource.data.uid == request.auth.uid)) &&
+          isDriverSelfAllowedUpdate(resource.data, request.resource.data)
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /users_driver/{driverId} {
+      allow get, list: if isAdmin() || isOwner(driverId) || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow get: if isValidId(customerId) && (
+        isAdmin() ||
+        isOwner(customerId) ||
+        (isSignedIn() && resource.data.uid == request.auth.uid)
+      );
+      allow list: if isAdmin() ||
+        (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(customerId) && (
+        isAdmin() ||
+        (
+          (isOwner(customerId) || (isSignedIn() && request.resource.data.uid == request.auth.uid)) &&
+          isValidCustomerPayload(request.resource.data)
+        )
+      );
+      allow update: if isValidId(customerId) && (
+        isAdmin() ||
+        (
+          (isOwner(customerId) || (isSignedIn() && resource.data.uid == request.auth.uid)) &&
+          isValidCustomerPayload(request.resource.data) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isDeleted'])
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /users_customer/{customerId} {
+      allow get, list: if isAdmin() || isOwner(customerId) || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /penumpang/{customerId} {
+      allow get, list: if isAdmin() || isOwner(customerId) || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow get, list: if isAdmin() || isOwner(userId) || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Koleksi daftar UID Admin — dilarang tulis dari klien (anti privilege escalation!)
+    match /admins/{adminUid} {
+      allow get: if isOwner(adminUid) || isAdmin();
+      allow list, create, update, delete: if false;
+    }
+
+    match /admin/{adminId} {
+      allow read, write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 5. LOG WHATSAPP & DIAGNOSTIK KONEKSI
+    // =========================================================================
+    match /wa_notifications/{notifId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /wa_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /_connection_test/ping {
+      allow get: if true;
+      allow write: if false;
+    }
+
+    // =========================================================================
+    // 6. DEFAULT-DENY CATCH-ALL (WAJIB)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
