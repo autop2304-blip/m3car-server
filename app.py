@@ -4,6 +4,12 @@ import os, hashlib, json
 from datetime import datetime
 
 app = Flask(__name__)
+from recovery_routes import register_recovery_routes
+
+register_recovery_routes(
+    app,
+    drivers_json_path=os.path.join(os.getcwd(), "drivers.json")
+)
 CORS(app)
 
 UPLOAD_FOLDER = 'unggahan'
