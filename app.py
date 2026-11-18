@@ -4,15 +4,20 @@ import os, hashlib, json
 from datetime import datetime
 
 app = Flask(__name__)
-from recovery_routes import register_recovery_routes
 
-register_recovery_routes(
-    app,
-    drivers_json_path=os.path.join(os.getcwd(), "drivers.json")
-)
-CORS(app)
+# Import recovery kalau ada
+try:
+    from recovery_routes import register_recovery_routes
+    register_recovery_routes(
+        app,
+        drivers_json_path=os.path.join(os.getcwd(), "drivers.json")
+    )
+except Exception as e:
+    print(f"recovery_routes tidak ada: {e}")
 
-UPLOAD_FOLDER = 'unggahan'
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.after_request
@@ -24,7 +29,7 @@ def after_request(response):
 
 @app.route('/')
 def home():
-    return jsonify({"status":"Server M3 CAR Live bos!"})
+    return jsonify({"status": "Server M3 CAR Live bos!", "logo_url": "/uploads/logo.png"})
 
 @app.route('/encrypt', methods=['GET','POST','OPTIONS'])
 def encrypt():
@@ -32,55 +37,46 @@ def encrypt():
         return '', 200
     try:
         data = request.get_json(silent=True) or {}
-        pwd = data.get('password') or data.get('pwd') or ""
+        pwd = data.get('password') or data.get('pwd') or request.args.get('password') or ""
         if not pwd:
             try:
-                pwd = request.data.decode('utf-8').strip('" ')
+                pwd = request.data.decode('utf-8')
             except:
-                pwd = ""
-        if not pwd:
-            pwd = request.args.get('password','test123')
-        enc = hashlib.sha256(pwd.encode()).hexdigest()
-        return jsonify({"status":"ok","encrypted":enc})
+                pwd = "test"
+        encrypted = hashlib.sha256(pwd.encode()).hexdigest()
+        return jsonify({"status": "ok", "encrypted": encrypted})
     except Exception as e:
-        return jsonify({"status":"ok","encrypted":hashlib.sha256(b"test123").hexdigest()})
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/upload', methods=['POST','OPTIONS'])
 def upload():
-    if request.method == 'OPTIONS': return '', 200
-    f = request.files.get('file')
-    if not f: return jsonify({"berhasil":True,"url":"/uploads/dummy.jpg"})
-    name = f"{datetime.now().strftime('%Y%m%d_%H%M%S_')}{f.filename}"
-    f.save(os.path.join(UPLOAD_FOLDER,name))
-    return jsonify({"berhasil":True,"url":f"/uploads/{name}"})
+    if request.method == 'OPTIONS':
+        return '', 200
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"success": False, "error": "no file"}), 400
+    filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+    file.save(os.path.join(UPLOAD_FOLDER, filename))
+    return jsonify({"success": True, "url": f"/uploads/{filename}"})
 
-@app.route('/uploads/<path:filename>')
+# INI YANG BARU BUAT LOGO - PAKAI SERVER SENDIRI
+@app.route('/api/upload-logo', methods=['POST','OPTIONS'])
+def upload_logo():
+    if request.method == 'OPTIONS':
+        return '', 200
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"success": False, "error": "no file"}), 400
+    file.save(os.path.join(UPLOAD_FOLDER, 'logo.png'))
+    return jsonify({"success": True, "url": "/uploads/logo.png", "message": "Logo tersimpan di server sendiri"})
+
+@app.route('/uploads/<filename>')
 def get_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-@app.route('/api/driver/register', methods=['POST','OPTIONS'])
-@app.route('/api/drivers/register', methods=['POST','OPTIONS'])
-@app.route('/api/register', methods=['POST','OPTIONS'])
-@app.route('/api/driver', methods=['POST','OPTIONS'])
-def register_driver():
-    if request.method == 'OPTIONS': return '', 200
-    return jsonify({"berhasil":True,"message":"Pendaftaran berhasil","status":"ok"})
-
-@app.route('/api/drivers', methods=['GET','OPTIONS'])
-def list_drivers():
-    if request.method == 'OPTIONS': return '', 200
-    return jsonify([])
-
-@app.route('/api/tarif', methods=['GET','POST','OPTIONS'])
-def tarif():
-    if request.method == 'OPTIONS': return '', 200
-    return jsonify({"berhasil":True})
-
-@app.route('/api/orders/close', methods=['POST','OPTIONS'])
-@app.route('/api/orders/open', methods=['POST','OPTIONS'])
-def orders():
-    if request.method == 'OPTIONS': return '', 200
-    return jsonify({"berhasil":True})
+@app.route('/api/health')
+def health():
+    return jsonify({"status": "live", "time": str(datetime.now())})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
